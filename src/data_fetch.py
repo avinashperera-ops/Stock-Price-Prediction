@@ -1,67 +1,58 @@
 import yfinance as yf
 import pandas as pd
 import requests
-from dotenv import load_dotenv
 import os
-from datetime import datetime, timedelta
 
-load_dotenv()
+# MarketStack API key (optional, for fallback)
+MARKETSTACK_API_KEY = os.getenv("MARKETSTACK_API_KEY")
 
-def fetch_stock_data(ticker, start_date, end_date):
-    """Fetch historical stock data with custom date range."""
+def fetch_stock_data(ticker, period="1y", is_sri_lankan=False):
     try:
+        # If the ticker is Sri Lankan, append the .CO suffix for yfinance
+        if is_sri_lankan:
+            ticker = f"{ticker}.CO"
+        
+        # Try yfinance first
         stock = yf.Ticker(ticker)
-        data = stock.history(start=start_date, end=end_date)
+        data = stock.history(period=period)
         if data.empty:
-            raise ValueError(f"No data found for {ticker}")
-        return data[['Open', 'High', 'Low', 'Close', 'Volume']]
+            # If yfinance fails and it's a Sri Lankan ticker, try MarketStack
+            if is_sri_lankan and MARKETSTACK_API_KEY:
+                # Map period to MarketStack date range
+                period_mapping = {
+                    "1mo": 30,
+                    "3mo": 90,
+                    "6mo": 180,
+                    "1y": 365,
+                    "2y": 730
+                }
+                days = period_mapping.get(period, 365)
+
+                # MarketStack API request
+                params = {
+                    "access_key": MARKETSTACK_API_KEY,
+                    "symbols": ticker.replace(".CO", ""),  # MarketStack uses the base ticker (e.g., HNB)
+                    "exchange": "CSE",  # Colombo Stock Exchange
+                    "date_from": (pd.Timestamp.today() - pd.Timedelta(days=days)).strftime("%Y-%m-%d"),
+                    "date_to": pd.Timestamp.today().strftime("%Y-%m-%d"),
+                    "limit": 1000
+                }
+                response = requests.get("http://api.marketstack.com/v1/eod", params=params)
+                response.raise_for_status()
+                market_data = response.json()
+
+                if "data" not in market_data or not market_data["data"]:
+                    raise ValueError(f"No data found for {ticker} on MarketStack")
+
+                # Convert MarketStack data to a pandas DataFrame
+                df = pd.DataFrame(market_data["data"])
+                df["Date"] = pd.to_datetime(df["date"])
+                df.set_index("Date", inplace=True)
+                df = df[["open", "high", "low", "close", "volume"]]
+                df.columns = ["Open", "High", "Low", "Close", "Volume"]
+                return df.sort_index()
+            else:
+                raise ValueError(f"No data found for {ticker}. If this is a Sri Lankan stock, ensure the ticker is correct (e.g., HNB for Hatton National Bank).")
+        return data
     except Exception as e:
-        raise ValueError(f"Error fetching {ticker}: {str(e)}")
-
-def fetch_sentiment_data(ticker, dates):
-    """Fetch news headlines from NewsAPI and calculate sentiment."""
-    api_key = os.getenv("NEWSAPI_KEY")
-    end_date = datetime.now().strftime("%Y-%m-%d")
-    start_date = (datetime.now() - timedelta(days=30)).strftime("%Y-%m-%d")
-    
-    # Track API requests
-    request_file = "request_count.txt"
-    if os.path.exists(request_file):
-        with open(request_file, 'r') as f:
-            count = int(f.read().strip())
-    else:
-        count = 0
-    
-    if count >= 100:
-        raise ValueError("NewsAPI request limit (100/day) reached.")
-    
-    url = f"https://newsapi.org/v2/everything?q={ticker}&from={start_date}&to={end_date}&language=en&apiKey={api_key}"
-    response = requests.get(url)
-    with open(request_file, 'w') as f:
-        f.write(str(count + 1))
-    
-    news_data = response.json()
-    if news_data['status'] != 'ok':
-        print("Error fetching news:", news_data.get('message', 'Unknown error'))
-        return pd.DataFrame({'Date': dates, 'Sentiment': [0] * len(dates)})
-
-    articles = news_data.get('articles', [])
-    sentiment_data = []
-    for article in articles:
-        date = pd.to_datetime(article['publishedAt']).date()
-        title = article.get('title', '')
-        sentiment_data.append({'Date': date, 'Text': title})
-
-    sentiment_df = pd.DataFrame(sentiment_data)
-    if sentiment_df.empty:
-        return pd.DataFrame({'Date': dates, 'Sentiment': [0] * len(dates)})
-
-    from nltk.sentiment.vader import SentimentIntensityAnalyzer
-    import nltk
-    nltk.download('vader_lexicon', quiet=True)
-    sid = SentimentIntensityAnalyzer()
-    
-    sentiment_df['Sentiment'] = sentiment_df['Text'].apply(lambda x: sid.polarity_scores(x)['compound'])
-    sentiment_df = sentiment_df.groupby('Date')['Sentiment'].mean().reset_index()
-    sentiment_df.set_index('Date', inplace=True)
-    return sentiment_df
+        raise Exception(f"Error fetching {ticker}: {str(e)}")
