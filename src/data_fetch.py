@@ -2,6 +2,7 @@ import yfinance as yf
 import pandas as pd
 import requests
 import os
+import streamlit as st
 
 # API keys
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
@@ -24,7 +25,8 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
         # Try yfinance first
         stock = yf.Ticker(ticker)
         data = stock.history(start=start_date, end=end_date)
-        if data.empty:
+        # Check if data is None or empty
+        if data is None or (isinstance(data, pd.DataFrame) and data.empty):
             # If yfinance fails and it's a Sri Lankan ticker, try MarketStack
             if is_sri_lankan and MARKETSTACK_API_KEY:
                 # Calculate date range in days
@@ -67,16 +69,10 @@ def fetch_sentiment_data(ticker, dates, is_sri_lankan=False):
         if is_sri_lankan:
             query = f"{query} Sri Lanka"
         
-        # Increment request count
-        request_file = "request_count.txt"
-        if os.path.exists(request_file):
-            with open(request_file, 'r') as f:
-                count = int(f.read().strip())
-        else:
-            count = 0
-        count += 1
-        with open(request_file, 'w') as f:
-            f.write(str(count))
+        # Increment request count using session state
+        if "newsapi_request_count" not in st.session_state:
+            st.session_state.newsapi_request_count = 0
+        st.session_state.newsapi_request_count += 1
 
         url = f"https://newsapi.org/v2/everything?q={query}&apiKey={NEWSAPI_KEY}"
         response = requests.get(url)
@@ -87,7 +83,6 @@ def fetch_sentiment_data(ticker, dates, is_sri_lankan=False):
             raise ValueError(f"No news articles found for {query}")
 
         # Simplified sentiment calculation (placeholder)
-        # In a real app, you'd use a sentiment analysis library like NLTK or TextBlob
         sentiment_scores = [0.1 * len(articles)] * len(dates)
         return pd.DataFrame({"Sentiment": sentiment_scores}, index=dates)
     except Exception as e:
