@@ -11,7 +11,7 @@ import os
 # Sidebar Help Section
 st.sidebar.title("Help")
 st.sidebar.markdown("""
-- **Ticker**: Enter stock symbols (e.g., "AAPL, TSLA").
+- **Ticker**: Enter stock symbols (e.g., "AAPL, TSLA", or "HNB" for Sri Lankan stocks).
 - **Date Range**: Select historical data period.
 - **Model**: Choose prediction method (LSTM, GRU, Moving Average).
 - **Signals**: Pick buy/sell logic (MinMax or Moving Average).
@@ -24,7 +24,8 @@ st.title("Stock Price Prediction with Buy/Sell Signals")
 st.write("Predict stock prices and get buy/sell recommendations with sentiment analysis.")
 
 # User Inputs
-tickers = st.text_input("Stock Tickers (comma-separated, e.g., AAPL, TSLA)", "AAPL")
+tickers = st.text_input("Stock Tickers (comma-separated, e.g., AAPL, TSLA, HNB)", "AAPL")
+is_sri_lankan = st.checkbox("Sri Lankan Stock (Colombo Stock Exchange)", value=False, help="Check if the ticker is from the Colombo Stock Exchange (e.g., HNB, COMB)")
 start_date = st.date_input("Start Date", datetime.now() - timedelta(days=365))
 end_date = st.date_input("End Date", datetime.now())
 model_type = st.selectbox("Prediction Model", ["LSTM", "GRU", "Moving Average"], index=0)
@@ -49,8 +50,8 @@ if run_button or refresh_button:
         with st.spinner(f"Processing {ticker}..."):
             try:
                 # Fetch and preprocess data
-                stock_data = fetch_stock_data(ticker, start_date, end_date)
-                sentiment_data = fetch_sentiment_data(ticker, stock_data.index)
+                stock_data = fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=is_sri_lankan)
+                sentiment_data = fetch_sentiment_data(ticker, stock_data.index, is_sri_lankan=is_sri_lankan)
                 X, y, scaler = preprocess_data(stock_data, sentiment_data, seq_length=10)
 
                 # Train and evaluate model
@@ -90,7 +91,7 @@ if run_button or refresh_button:
                     fig_sent.update_layout(title=f'{ticker} Sentiment Trend', xaxis_title='Date', yaxis_title='Sentiment')
                     st.plotly_chart(fig_sent)
 
-                # Buy/Sell Recommendations with Exact Dates
+                # Buy/Sell Recommendations with Exact Dates
                 st.subheader(f"{ticker} Buy/Sell Recommendations")
                 recommendations = []
                 total_profit = 0
