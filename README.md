@@ -15,6 +15,20 @@ A comprehensive stock prediction tool using historical data and NewsAPI sentimen
 - Real-time data refresh.
 - Help section, ticker validation, API limit tracking.
 
+## Screenshots
+
+### Dashboard
+![Dashboard](images/image1.png)
+
+### Settings
+![Settings](images/image2.png)
+
+### Data Fetch Example
+![Data Fetch Example](images/image3.png)
+
+### Buy & Sell Recommendations
+![Buy & Sell Recommendations](images/image4.png)
+
 ## Installation
 1. Clone the repo:
    ```bash
