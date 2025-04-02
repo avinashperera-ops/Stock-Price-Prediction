@@ -3,10 +3,10 @@ import pandas as pd
 import requests
 import os
 import streamlit as st
+from bs4 import BeautifulSoup
 
 # API keys
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
-MARKETSTACK_API_KEY = os.getenv("MARKETSTACK_API_KEY")
 ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 
 # Map tickers to company names for better news search
@@ -34,38 +34,8 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
             st.warning(f"yfinance failed for {ticker}: {str(yf_error)}")
             data = None
 
-        # If yfinance fails, try MarketStack for Sri Lankan tickers
+        # If yfinance fails, try Alpha Vantage for Sri Lankan tickers
         if (data is None or (isinstance(data, pd.DataFrame) and data.empty)) and is_sri_lankan:
-            if MARKETSTACK_API_KEY:
-                try:
-                    # Use the .N0000 suffix for MarketStack (CSE format)
-                    marketstack_ticker = f"{original_ticker}.N0000"
-                    days = (end_date - start_date).days
-                    params = {
-                        "access_key": MARKETSTACK_API_KEY,
-                        "symbols": marketstack_ticker,
-                        "exchange": "CSE",
-                        "date_from": start_date.strftime("%Y-%m-%d"),
-                        "date_to": end_date.strftime("%Y-%m-%d"),
-                        "limit": 1000
-                    }
-                    response = requests.get("http://api.marketstack.com/v1/eod", params=params)
-                    response.raise_for_status()
-                    market_data = response.json()
-
-                    if "data" not in market_data or not market_data["data"]:
-                        raise ValueError(f"No data found for {marketstack_ticker} on MarketStack")
-
-                    df = pd.DataFrame(market_data["data"])
-                    df["Date"] = pd.to_datetime(df["date"])
-                    df.set_index("Date", inplace=True)
-                    df = df[["open", "high", "low", "close", "volume"]]
-                    df.columns = ["Open", "High", "Low", "Close", "Volume"]
-                    return df.sort_index()
-                except Exception as ms_error:
-                    st.warning(f"MarketStack failed for {marketstack_ticker}: {str(ms_error)}")
-
-            # If MarketStack fails, try Alpha Vantage
             if ALPHA_VANTAGE_API_KEY:
                 try:
                     params = {
@@ -79,7 +49,7 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
                     av_data = response.json()
 
                     if "Time Series (Daily)" not in av_data:
-                        raise ValueError(f"No data found for {original_ticker} on Alpha Vantage")
+                        raise ValueError(f"No data found for {original_ticker} on Alpha Vantage: {av_data.get('Note', 'No data returned')}")
 
                     time_series = av_data["Time Series (Daily)"]
                     df = pd.DataFrame.from_dict(time_series, orient="index")
@@ -92,9 +62,39 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
                         raise ValueError(f"No data in the specified date range for {original_ticker} on Alpha Vantage")
                     return df.sort_index()
                 except Exception as av_error:
-                    raise ValueError(f"Alpha Vantage failed for {original_ticker}: {str(av_error)}")
-            else:
-                raise ValueError("Alpha Vantage API key not found. Please set ALPHA_VANTAGE_API_KEY in environment variables.")
+                    st.warning(f"Alpha Vantage failed for {original_ticker}: {str(av_error)}")
+
+            # If Alpha Vantage fails, scrape from CSE website
+            try:
+                # Scrape historical data from CSE
+                url = f"https://www.cse.lk/api/companyProfMore?symbol={original_ticker}.N0000"
+                headers = {
+                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+                }
+                response = requests.get(url, headers=headers)
+                response.raise_for_status()
+                data = response.json()
+
+                if not data or "historicalData" not in data:
+                    raise ValueError(f"No historical data found for {original_ticker} on CSE website")
+
+                historical_data = data["historicalData"]
+                if not historical_data:
+                    raise ValueError(f"No historical data available for {original_ticker} on CSE website")
+
+                # Convert to DataFrame
+                df = pd.DataFrame(historical_data)
+                df["Date"] = pd.to_datetime(df["date"])
+                df.set_index("Date", inplace=True)
+                df = df[["open", "high", "low", "close", "volume"]]
+                df.columns = ["Open", "High", "Low", "Close", "Volume"]
+                df = df.astype(float)
+                df = df.loc[start_date:end_date]
+                if df.empty:
+                    raise ValueError(f"No data in the specified date range for {original_ticker} on CSE website")
+                return df.sort_index()
+            except Exception as scrape_error:
+                raise ValueError(f"Failed to scrape data from CSE for {original_ticker}: {str(scrape_error)}")
 
         # If yfinance succeeded, return the data
         if data is not None and not data.empty:
