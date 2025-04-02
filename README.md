@@ -18,16 +18,16 @@ A comprehensive stock prediction tool using historical data and NewsAPI sentimen
 ## Screenshots
 
 ### Dashboard
-![Dashboard](images/image1.png)
+![Dashboard](image1.png)
 
 ### Settings
-![Settings](images/image2.png)
+![Settings](image2.png)
 
 ### Data Fetch Example
-![Data Fetch Example](images/image3.png)
+![Data Fetch Example](image3.png)
 
 ### Buy & Sell Recommendations
-![Buy & Sell Recommendations](images/image4.png)
+![Buy & Sell Recommendations](image4.png)
 
 ## Installation
 1. Clone the repo:
