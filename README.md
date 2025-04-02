@@ -36,5 +36,4 @@ A comprehensive stock prediction tool using historical data and NewsAPI sentimen
 
 ## Try It (Live Demo)
 You can try the demo version of this from the below link:
-```bash
-https://avi-stock-price.streamlit.app/
+[Live Demo](https://avi-stock-price.streamlit.app/)
