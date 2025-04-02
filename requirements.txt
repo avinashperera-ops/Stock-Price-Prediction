@@ -1,11 +1,12 @@
-pandas
+pandas==2.2.2
 numpy
-yfinance
+yfinance==0.2.40
 tensorflow
 scikit-learn
 matplotlib
-requests
+requests==2.31.0
 python-dotenv
 nltk
-streamlit
+streamlit==1.36.0
 plotly
+beautifulsoup4==4.12.2
