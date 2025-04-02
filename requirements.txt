@@ -1,0 +1,11 @@
+pandas
+numpy
+yfinance
+tensorflow
+scikit-learn
+matplotlib
+requests
+python-dotenv
+nltk
+streamlit
+plotly
