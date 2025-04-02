@@ -1,5 +1,3 @@
-# This is built by Avinash Perera
-
 import streamlit as st
 import plotly.graph_objects as go
 from src.data_fetch import fetch_stock_data, fetch_sentiment_data
