@@ -8,6 +8,7 @@ from bs4 import BeautifulSoup
 # API keys
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
+EOD_API_KEY = os.getenv("EOD_API_KEY")
 
 # Map tickers to company names for better news search
 TICKER_TO_COMPANY = {
@@ -64,10 +65,31 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
                 except Exception as av_error:
                     st.warning(f"Alpha Vantage failed for {original_ticker}: {str(av_error)}")
 
-            # If Alpha Vantage fails, scrape from CSE website
+            # If Alpha Vantage fails, try EOD Historical Data
+            if EOD_API_KEY:
+                try:
+                    url = f"https://eodhistoricaldata.com/api/eod/{original_ticker}.CSE?api_token={EOD_API_KEY}&fmt=json&from={start_date.strftime('%Y-%m-%d')}&to={end_date.strftime('%Y-%m-%d')}"
+                    response = requests.get(url)
+                    response.raise_for_status()
+                    eod_data = response.json()
+
+                    if not eod_data:
+                        raise ValueError(f"No data found for {original_ticker} on EOD Historical Data")
+
+                    df = pd.DataFrame(eod_data)
+                    df["Date"] = pd.to_datetime(df["date"])
+                    df.set_index("Date", inplace=True)
+                    df = df[["open", "high", "low", "close", "volume"]]
+                    df.columns = ["Open", "High", "Low", "Close", "Volume"]
+                    if df.empty:
+                        raise ValueError(f"No data in the specified date range for {original_ticker} on EOD Historical Data")
+                    return df.sort_index()
+                except Exception as eod_error:
+                    st.warning(f"EOD Historical Data failed for {original_ticker}: {str(eod_error)}")
+
+            # If EOD fails, scrape from CSE website
             try:
-                # Scrape historical data from CSE
-                url = f"https://www.cse.lk/api/companyProfMore?symbol={original_ticker}.N0000"
+                url = f"https://www.cse.lk/api/historicalData?symbol={original_ticker}.N0000"
                 headers = {
                     "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
                 }
@@ -75,10 +97,10 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
                 response.raise_for_status()
                 data = response.json()
 
-                if not data or "historicalData" not in data:
+                if not data:
                     raise ValueError(f"No historical data found for {original_ticker} on CSE website")
 
-                historical_data = data["historicalData"]
+                historical_data = data
                 if not historical_data:
                     raise ValueError(f"No historical data available for {original_ticker} on CSE website")
 
