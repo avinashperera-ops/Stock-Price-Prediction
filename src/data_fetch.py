@@ -61,7 +61,7 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
             stock = yf.Ticker(yf_ticker)
             data = stock.history(start=start_date, end=end_date)
             if data is None or (isinstance(data, pd.DataFrame) and data.empty):
-                raise ValueError(f"yfinance returned no data for {yf_ticker}")
+                raise ValueError(f"yfinance returned no data for {yf_ticker}. Response: {stock.info}")
             return data
         except Exception as yf_error:
             st.warning(f"yfinance failed for {yf_ticker}: {str(yf_error)}")
@@ -86,18 +86,22 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
                         error_msg = av_data.get('Note', 'No data returned')
                         if 'Information' in av_data:
                             error_msg = av_data.get('Information', error_msg)
-                        raise ValueError(f"No data found for {av_ticker} on Alpha Vantage: {error_msg}")
-
-                    time_series = av_data["Time Series (Daily)"]
-                    df = pd.DataFrame.from_dict(time_series, orient="index")
-                    df.index = pd.to_datetime(df.index)
-                    df = df[["1. open", "2. high", "3. low", "4. close", "5. volume"]]
-                    df.columns = ["Open", "High", "Low", "Close", "Volume"]
-                    df = df.astype(float)
-                    df = df.loc[start_date:end_date]
-                    if df.empty:
-                        raise ValueError(f"No data in the specified date range for {av_ticker} on Alpha Vantage")
-                    return df.sort_index()
+                        if "rate limit" in error_msg.lower():
+                            st.warning(f"Alpha Vantage rate limit exceeded: {error_msg}. Skipping Alpha Vantage.")
+                            data = None
+                        else:
+                            raise ValueError(f"No data found for {av_ticker} on Alpha Vantage: {error_msg}")
+                    else:
+                        time_series = av_data["Time Series (Daily)"]
+                        df = pd.DataFrame.from_dict(time_series, orient="index")
+                        df.index = pd.to_datetime(df.index)
+                        df = df[["1. open", "2. high", "3. low", "4. close", "5. volume"]]
+                        df.columns = ["Open", "High", "Low", "Close", "Volume"]
+                        df = df.astype(float)
+                        df = df.loc[start_date:end_date]
+                        if df.empty:
+                            raise ValueError(f"No data in the specified date range for {av_ticker} on Alpha Vantage")
+                        return df.sort_index()
                 except Exception as av_error:
                     st.warning(f"Alpha Vantage failed for {av_ticker}: {str(av_error)}")
                     data = None
@@ -214,13 +218,11 @@ def fetch_sentiment_data(ticker, dates, is_sri_lankan=False):
     
     Returns:
         pd.DataFrame: Sentiment scores for the given dates.
-    
-    Raises:
-        ValueError: If no news articles are found.
     """
     try:
         if not NEWSAPI_KEY:
-            raise ValueError("NewsAPI key not found. Please set NEWSAPI_KEY in environment variables.")
+            st.warning("NewsAPI key not found. Proceeding with neutral sentiment.")
+            return pd.DataFrame({"Sentiment": [0.0] * len(dates)}, index=dates)
         
         # Use the company name for better news search
         query = TICKER_TO_COMPANY.get(ticker.replace(".CO", ""), ticker)
@@ -239,7 +241,8 @@ def fetch_sentiment_data(ticker, dates, is_sri_lankan=False):
         news_data = response.json()
         articles = news_data.get("articles", [])
         if not articles:
-            raise ValueError(f"No news articles found for {query}")
+            st.warning(f"No news articles found for {query}. Proceeding with neutral sentiment.")
+            return pd.DataFrame({"Sentiment": [0.0] * len(dates)}, index=dates)
 
         # Analyze sentiment of each article
         sentiment_scores = []
