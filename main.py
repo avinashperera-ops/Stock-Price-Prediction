@@ -1,3 +1,4 @@
+# main.py
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
@@ -23,7 +24,7 @@ end_date = st.sidebar.date_input("End Date", end_date, max_value=datetime.today(
 
 # Model selection
 st.sidebar.subheader("Model")
-model_type = st.sidebar.selectbox("Choose Model", ["LSTM", "GRU"])
+model_type = st.sidebar.selectbox("Choose Model", ["LSTM", "GRU", "Moving Average"])
 signal_type = st.sidebar.selectbox("Signal Type", ["Moving Average", "MinMax"])
 
 # Refresh data button
@@ -86,8 +87,8 @@ if stock_data is not None and not stock_data.empty:
 
         # Train model and predict
         with st.spinner("Training model and generating predictions..."):
-            model = train_model(stock_data, model_type)
-            predictions = predict_stock(model, stock_data)
+            model, X_test, y_test, scaler = train_model(stock_data, model_type)
+            predictions = predict_stock(model, stock_data, scaler, model_type)
         
         # Generate buy/sell signals
         with st.spinner("Generating buy/sell signals..."):
@@ -127,8 +128,8 @@ if st.button("Run Prediction"):
 
             # Train model and predict
             with st.spinner("Training model and generating predictions..."):
-                model = train_model(stock_data, model_type)
-                predictions = predict_stock(model, stock_data)
+                model, X_test, y_test, scaler = train_model(stock_data, model_type)
+                predictions = predict_stock(model, stock_data, scaler, model_type)
             
             # Generate buy/sell signals
             with st.spinner("Generating buy/sell signals..."):
