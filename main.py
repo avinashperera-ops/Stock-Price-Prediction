@@ -89,22 +89,33 @@ if uploaded_file is not None:
 # Run prediction if data is available
 if stock_data is not None and not stock_data.empty:
     try:
-        # Fetch sentiment data
-        with st.spinner("Fetching sentiment data..."):
-            sentiment_data = fetch_sentiment_data(ticker, stock_data.index, is_sri_lankan)
-
-        # Train model and predict
-        with st.spinner("Training model and generating predictions..."):
-            model, X_test, y_test, scaler = train_model(stock_data, model_type)
-            predictions = predict_stock(model, stock_data, scaler, model_type)
-        
-        # Generate buy/sell signals
-        with st.spinner("Generating buy/sell signals..."):
-            signals = generate_signals(stock_data, predictions, signal_type)
-
-        # Display results
+        # Display stock data
         st.subheader(f"Stock Data for {ticker}")
         st.write(stock_data.tail())
+
+        # Progress bar for prediction steps
+        progress_bar = st.progress(0)
+        status_text = st.empty()
+
+        # Step 1: Fetch sentiment data
+        status_text.text("Fetching sentiment data...")
+        progress_bar.progress(20)
+        sentiment_data = fetch_sentiment_data(ticker, stock_data.index, is_sri_lankan)
+
+        # Step 2: Train model and predict
+        status_text.text("Training model and generating predictions...")
+        progress_bar.progress(60)
+        model, X_test, y_test, scaler = train_model(stock_data, model_type)
+        predictions = predict_stock(model, stock_data, scaler, model_type)
+        
+        # Step 3: Generate buy/sell signals
+        status_text.text("Generating buy/sell signals...")
+        progress_bar.progress(90)
+        signals = generate_signals(stock_data, predictions, signal_type)
+
+        # Step 4: Display results
+        status_text.text("Displaying results...")
+        progress_bar.progress(100)
 
         st.subheader("Predictions")
         st.line_chart(predictions)
@@ -120,6 +131,11 @@ if stock_data is not None and not stock_data.empty:
             file_name=f"{ticker}_predictions.csv",
             mime="text/csv"
         )
+
+        # Clear progress bar
+        status_text.empty()
+        progress_bar.empty()
+
     except Exception as e:
         st.error(f"Error during prediction: {str(e)}")
 else:
@@ -130,22 +146,33 @@ else:
 if st.button("Run Prediction"):
     if stock_data is not None and not stock_data.empty:
         try:
-            # Fetch sentiment data
-            with st.spinner("Fetching sentiment data..."):
-                sentiment_data = fetch_sentiment_data(ticker, stock_data.index, is_sri_lankan)
-
-            # Train model and predict
-            with st.spinner("Training model and generating predictions..."):
-                model, X_test, y_test, scaler = train_model(stock_data, model_type)
-                predictions = predict_stock(model, stock_data, scaler, model_type)
-            
-            # Generate buy/sell signals
-            with st.spinner("Generating buy/sell signals..."):
-                signals = generate_signals(stock_data, predictions, signal_type)
-
-            # Display results
+            # Display stock data
             st.subheader(f"Stock Data for {ticker}")
             st.write(stock_data.tail())
+
+            # Progress bar for prediction steps
+            progress_bar = st.progress(0)
+            status_text = st.empty()
+
+            # Step 1: Fetch sentiment data
+            status_text.text("Fetching sentiment data...")
+            progress_bar.progress(20)
+            sentiment_data = fetch_sentiment_data(ticker, stock_data.index, is_sri_lankan)
+
+            # Step 2: Train model and predict
+            status_text.text("Training model and generating predictions...")
+            progress_bar.progress(60)
+            model, X_test, y_test, scaler = train_model(stock_data, model_type)
+            predictions = predict_stock(model, stock_data, scaler, model_type)
+            
+            # Step 3: Generate buy/sell signals
+            status_text.text("Generating buy/sell signals...")
+            progress_bar.progress(90)
+            signals = generate_signals(stock_data, predictions, signal_type)
+
+            # Step 4: Display results
+            status_text.text("Displaying results...")
+            progress_bar.progress(100)
 
             st.subheader("Predictions")
             st.line_chart(predictions)
@@ -161,6 +188,11 @@ if st.button("Run Prediction"):
                 file_name=f"{ticker}_predictions.csv",
                 mime="text/csv"
             )
+
+            # Clear progress bar
+            status_text.empty()
+            progress_bar.empty()
+
         except Exception as e:
             st.error(f"Error during prediction: {str(e)}")
     else:
