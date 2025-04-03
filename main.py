@@ -13,7 +13,7 @@ except LookupError:
 from src.data_fetch import fetch_stock_data, fetch_sentiment_data
 from src.model import train_model, predict_stock, generate_signals
 
-# Rest of the code remains the same...
+# Streamlit app
 st.title("Stock Price Prediction with Buy/Sell Signals")
 
 # Sidebar for user input
