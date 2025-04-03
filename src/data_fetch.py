@@ -6,14 +6,15 @@ import os
 import streamlit as st
 from bs4 import BeautifulSoup
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Initialize NLTK VADER sentiment analyzer
 sia = SentimentIntensityAnalyzer()
 
-# API keys (using python-dotenv)
-from dotenv import load_dotenv
-load_dotenv()
-
+# API keys
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 EOD_API_KEY = os.getenv("EOD_API_KEY")
@@ -82,7 +83,10 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
                     av_data = response.json()
 
                     if "Time Series (Daily)" not in av_data:
-                        raise ValueError(f"No data found for {av_ticker} on Alpha Vantage: {av_data.get('Note', 'No data returned')}")
+                        error_msg = av_data.get('Note', 'No data returned')
+                        if 'Information' in av_data:
+                            error_msg = av_data.get('Information', error_msg)
+                        raise ValueError(f"No data found for {av_ticker} on Alpha Vantage: {error_msg}")
 
                     time_series = av_data["Time Series (Daily)"]
                     df = pd.DataFrame.from_dict(time_series, orient="index")
@@ -96,6 +100,7 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
                     return df.sort_index()
                 except Exception as av_error:
                     st.warning(f"Alpha Vantage failed for {av_ticker}: {str(av_error)}")
+                    data = None
 
         # If Alpha Vantage fails, try Financial Modeling Prep for all tickers
         if data is None or (isinstance(data, pd.DataFrame) and data.empty):
@@ -124,6 +129,7 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
                     return df.sort_index()
                 except Exception as fmp_error:
                     st.warning(f"Financial Modeling Prep failed for {fmp_ticker}: {str(fmp_error)}")
+                    data = None
 
         # If FMP fails, try EOD Historical Data for all tickers
         if data is None or (isinstance(data, pd.DataFrame) and data.empty):
@@ -148,6 +154,7 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
                     return df.sort_index()
                 except Exception as eod_error:
                     st.warning(f"EOD Historical Data failed for {eod_ticker}: {str(eod_error)}")
+                    data = None
 
         # If all previous methods fail and the stock is Sri Lankan, scrape from CSE website
         if (data is None or (isinstance(data, pd.DataFrame) and data.empty)) and is_sri_lankan:
@@ -180,6 +187,7 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
                 return df.sort_index()
             except Exception as scrape_error:
                 st.warning(f"CSE scraping failed for {original_ticker}: {str(scrape_error)}")
+                data = None
 
         # If all methods fail, raise an error
         if data is None or (isinstance(data, pd.DataFrame) and data.empty):
@@ -236,8 +244,10 @@ def fetch_sentiment_data(ticker, dates, is_sri_lankan=False):
         # Analyze sentiment of each article
         sentiment_scores = []
         for article in articles:
-            text = article.get("title", "") + " " + article.get("description", "")
-            if text:
+            title = article.get("title", "") or ""
+            description = article.get("description", "") or ""
+            text = title + " " + description
+            if text.strip():
                 scores = sia.polarity_scores(text)
                 sentiment_scores.append(scores["compound"])  # Use compound score
             else:
@@ -250,4 +260,6 @@ def fetch_sentiment_data(ticker, dates, is_sri_lankan=False):
         sentiment_df = pd.DataFrame({"Sentiment": [avg_sentiment] * len(dates)}, index=dates)
         return sentiment_df
     except Exception as e:
-        raise Exception(f"Error fetching news for {ticker}: {str(e)}")
+        st.warning(f"Sentiment analysis failed for {ticker}: {str(e)}. Proceeding with neutral sentiment.")
+        # Return a DataFrame with neutral sentiment (0.0) for all dates
+        return pd.DataFrame({"Sentiment": [0.0] * len(dates)}, index=dates)
