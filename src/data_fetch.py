@@ -5,8 +5,15 @@ import requests
 import os
 import streamlit as st
 from bs4 import BeautifulSoup
+from nltk.sentiment.vader import SentimentIntensityAnalyzer
 
-# API keys
+# Initialize NLTK VADER sentiment analyzer
+sia = SentimentIntensityAnalyzer()
+
+# API keys (using python-dotenv)
+from dotenv import load_dotenv
+load_dotenv()
+
 NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
 ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
 EOD_API_KEY = os.getenv("EOD_API_KEY")
@@ -190,7 +197,7 @@ def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
 
 def fetch_sentiment_data(ticker, dates, is_sri_lankan=False):
     """
-    Fetch sentiment data based on news articles.
+    Fetch sentiment data based on news articles using NLTK VADER.
     
     Args:
         ticker (str): Stock ticker symbol.
@@ -217,6 +224,7 @@ def fetch_sentiment_data(ticker, dates, is_sri_lankan=False):
             st.session_state.newsapi_request_count = 0
         st.session_state.newsapi_request_count += 1
 
+        # Fetch news articles
         url = f"https://newsapi.org/v2/everything?q={query}&apiKey={NEWSAPI_KEY}"
         response = requests.get(url)
         response.raise_for_status()
@@ -225,8 +233,21 @@ def fetch_sentiment_data(ticker, dates, is_sri_lankan=False):
         if not articles:
             raise ValueError(f"No news articles found for {query}")
 
-        # Simplified sentiment calculation (placeholder)
-        sentiment_scores = [0.1 * len(articles)] * len(dates)
-        return pd.DataFrame({"Sentiment": sentiment_scores}, index=dates)
+        # Analyze sentiment of each article
+        sentiment_scores = []
+        for article in articles:
+            text = article.get("title", "") + " " + article.get("description", "")
+            if text:
+                scores = sia.polarity_scores(text)
+                sentiment_scores.append(scores["compound"])  # Use compound score
+            else:
+                sentiment_scores.append(0.0)  # Neutral if no text
+
+        # Average sentiment score
+        avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0.0
+
+        # Create a DataFrame with the same sentiment score for all dates
+        sentiment_df = pd.DataFrame({"Sentiment": [avg_sentiment] * len(dates)}, index=dates)
+        return sentiment_df
     except Exception as e:
         raise Exception(f"Error fetching news for {ticker}: {str(e)}")
