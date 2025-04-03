@@ -2,10 +2,18 @@
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
+import nltk
+
+# Download NLTK data for sentiment analysis
+try:
+    nltk.data.find('vader_lexicon')
+except LookupError:
+    nltk.download('vader_lexicon')
+
 from src.data_fetch import fetch_stock_data, fetch_sentiment_data
 from src.model import train_model, predict_stock, generate_signals
 
-# Streamlit app
+# Rest of the code remains the same...
 st.title("Stock Price Prediction with Buy/Sell Signals")
 
 # Sidebar for user input
