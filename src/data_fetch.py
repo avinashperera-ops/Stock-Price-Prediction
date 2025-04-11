@@ -1,4 +1,4 @@
-# data_fetch.py
+# src/data_fetch.py
 
 import streamlit as st
 import yfinance as yf
