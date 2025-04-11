@@ -1,6 +1,6 @@
 # src/visualize.py
 
-import streamlit as st
+import streamlit as st  # Add this import
 import plotly.graph_objs as go
 
 def plot_historical_data(df, symbol):
