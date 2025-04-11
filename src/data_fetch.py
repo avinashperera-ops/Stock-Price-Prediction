@@ -1,4 +1,4 @@
-# src/data_fetch.py
+# data_fetch.py
 
 import streamlit as st
 import yfinance as yf
@@ -6,7 +6,7 @@ import requests
 import pandas as pd
 
 # EODHD API key
-EODHD_API_KEY = " 67ed03b7d053d7.37731358"
+EODHD_API_KEY = "your_eodhd_api_key_here"
 
 @st.cache_data
 def fetch_stock_data(symbol, start, end, uploaded_file=None, date_col=None, close_col=None, volume_col=None):
