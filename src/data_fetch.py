@@ -1,5 +1,6 @@
 # src/data_fetch.py
 
+import streamlit as st  # Add this import
 import yfinance as yf
 import requests
 import pandas as pd
