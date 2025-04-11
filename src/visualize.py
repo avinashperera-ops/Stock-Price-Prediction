@@ -1,16 +1,33 @@
-import matplotlib.pyplot as plt
+# src/visualize.py
 
-def plot_results(predictions, y_test, scaler):
-    """Plot actual vs predicted prices."""
-    predictions = scaler.inverse_transform(predictions)
-    y_test = scaler.inverse_transform(y_test.reshape(-1, 1))
+import streamlit as st
+import plotly.graph_objs as go
 
-    plt.figure(figsize=(10, 6))
-    plt.plot(y_test, label='Actual Price')
-    plt.plot(predictions, label='Predicted Price')
-    plt.title('Stock Price Prediction with News Sentiment')
-    plt.xlabel('Time')
-    plt.ylabel('Price')
-    plt.legend()
-    plt.savefig('prediction_plot.png')
-    plt.show()
+def plot_historical_data(df, symbol):
+    fig = go.Figure()
+    fig.add_trace(go.Scatter(x=df["Date"], y=df["Close"], mode="lines", name="Historical Price"))
+    fig.update_layout(
+        title=f"Historical Prices for {symbol if symbol else 'Uploaded Data'}",
+        xaxis_title="Date",
+        yaxis_title="Price",
+        template="plotly_dark"
+    )
+    st.plotly_chart(fig)
+
+def plot_forecast(df, forecast, symbol):
+    fig_forecast = go.Figure()
+    fig_forecast.add_trace(go.Scatter(x=df["Date"], y=df["Close"], mode="lines", name="Historical"))
+    fig_forecast.add_trace(go.Scatter(x=forecast["ds"], y=forecast["yhat"], mode="lines", name="Forecast", line=dict(dash="dash")))
+    fig_forecast.add_trace(go.Scatter(x=forecast["ds"], y=forecast["yhat_lower"], mode="lines", name="Lower Bound", line=dict(color="rgba(255,0,0,0.2)")))
+    fig_forecast.add_trace(go.Scatter(x=forecast["ds"], y=forecast["yhat_upper"], mode="lines", name="Upper Bound", line=dict(color="rgba(0,255,0,0.2)"), fill="tonexty"))
+    fig_forecast.update_layout(
+        title=f"Price Forecast for {symbol if symbol else 'Uploaded Data'}",
+        xaxis_title="Date",
+        yaxis_title="Price",
+        template="plotly_dark"
+    )
+    st.plotly_chart(fig_forecast)
+
+def display_signals(signals):
+    st.subheader("Buy/Sell Signals")
+    st.dataframe(signals[["ds", "Signal"]].tail())
