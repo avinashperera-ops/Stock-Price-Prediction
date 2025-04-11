@@ -1,6 +1,6 @@
-# src/model.py
+# model.py
 
-import streamlit as st  # Add this import
+import streamlit as st
 import pandas as pd
 from prophet import Prophet
 
