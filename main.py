@@ -4,15 +4,20 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
-# Debug import to ensure src/data_fetch is accessible
+# Debug import to ensure data_fetch is accessible
 try:
-    from src.data_fetch import fetch_stock_data, fetch_sentiment_data
+    from data_fetch import fetch_stock_data, fetch_sentiment_data
 except ImportError as e:
-    st.error(f"Failed to import fetch_stock_data from src.data_fetch: {e}")
+    st.error(f"Failed to import fetch_stock_data from data_fetch: {e}")
     st.stop()
 
-from src.model import train_model, predict_stock, generate_signals
-from src.visualize import plot_historical_data, plot_forecast, display_signals
+# Debug to confirm fetch_stock_data is defined
+if 'fetch_stock_data' not in globals():
+    st.error("fetch_stock_data is not defined after import. Please check data_fetch.py.")
+    st.stop()
+
+from model import train_model, predict_stock, generate_signals
+from visualize import plot_historical_data, plot_forecast, display_signals
 
 # NLTK downloads (for sentiment analysis, if used)
 import nltk
