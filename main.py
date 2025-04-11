@@ -1,199 +1,149 @@
 # main.py
+
 import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
-import nltk
-
-# Download NLTK data for sentiment analysis
-try:
-    nltk.data.find('vader_lexicon')
-except LookupError:
-    nltk.download('vader_lexicon')
 
 from src.data_fetch import fetch_stock_data, fetch_sentiment_data
 from src.model import train_model, predict_stock, generate_signals
+from src.visualize import plot_historical_data, plot_forecast, display_signals
 
-# Streamlit app
+# NLTK downloads (for sentiment analysis, if used)
+import nltk
+nltk.download('vader_lexicon')
+
+# Custom CSS for a dark theme
+st.markdown("""
+    <style>
+    /* Main app background */
+    [data-testid="stAppViewContainer"] {
+        background-color: #1e1e1e !important;
+        color: white;
+        padding: 20px;
+        border-radius: 10px;
+    }
+    /* Style the button */
+    .stButton>button {
+        background-color: #4CAF50;
+        color: white;
+        border-radius: 5px;
+        padding: 10px 20px;
+    }
+    /* Style selectbox, slider, and text input */
+    .stSelectbox, .stSlider, .stTextInput, .stDateInput {
+        background-color: #2e2e2e;
+        color: white;
+        border-radius: 5px;
+        padding: 10px;
+    }
+    /* Style the title */
+    h1 {
+        color: white;
+        text-align: center;
+    }
+    /* Style the sidebar */
+    [data-testid="stSidebar"] {
+        background-color: #2e2e2e !important;
+        color: white;
+        border-radius: 10px;
+    }
+    [data-testid="stSidebar"] * {
+        color: white !important;
+    }
+    /* Style alerts */
+    .stAlert {
+        border-radius: 5px;
+    }
+    /* Style dataframe */
+    .stDataFrame {
+        background-color: #2e2e2e;
+        color: white;
+    }
+    </style>
+""", unsafe_allow_html=True)
+
+# App title
 st.title("Stock Price Prediction with Buy/Sell Signals")
 
 # Sidebar for user input
 st.sidebar.header("Input Parameters")
 
 # Ticker input
-ticker = st.sidebar.text_input("Ticker (e.g., AAPL, HNB)", "AAPL").strip().upper()
-is_sri_lankan = st.sidebar.checkbox("Sri Lankan Stock (e.g., HNB, COMB)", False)
+st.sidebar.subheader("Ticker")
+ticker = st.sidebar.text_input("Global Stock (e.g., AAPL, HNB)", "AAPL", key="global_stock_input")
+is_sri_lankan = st.sidebar.checkbox("Sri Lankan Stock (e.g., HNB, COMB)", False, key="sri_lankan_checkbox")
 
 # Date range
 st.sidebar.subheader("Date Range")
-end_date = datetime.today().date()
-start_date = end_date - timedelta(days=365)
-start_date = st.sidebar.date_input("Start Date", start_date, max_value=end_date - timedelta(days=1))
-end_date = st.sidebar.date_input("End Date", end_date, max_value=datetime.today().date())
+start_date = st.sidebar.date_input("Start", datetime(2024, 4, 11), key="start_date_input")
+end_date = st.sidebar.date_input("End", datetime(2025, 4, 11), key="end_date_input")
 
 # Model selection
 st.sidebar.subheader("Model")
-model_type = st.sidebar.selectbox("Choose Model", ["LSTM", "GRU", "Moving Average"])
-signal_type = st.sidebar.selectbox("Signal Type", ["Moving Average", "MinMax"])
+model_choice = st.sidebar.selectbox("Choose Model", ["Prophet", "LSTM"], index=0, key="model_selectbox")
 
-# Refresh data button
-refresh_data = st.sidebar.button("Refresh Data")
+# Signal type
+st.sidebar.subheader("Signal Type")
+signal_type = st.sidebar.selectbox("Signal Type", ["Moving Average"], index=0, key="signal_selectbox")
 
-# File upload for manual data
-st.sidebar.subheader("Load Predictions (CSV)")
-uploaded_file = st.sidebar.file_uploader(
-    "Drag and drop file here",
-    type=["csv"],
-    help="Limit 200MB per file • CSV. Required columns: Date, Open, High, Low, Close, Volume."
-)
-
-# Main content
-stock_data = None
-if refresh_data or uploaded_file is None:
-    with st.spinner(f"Fetching data for {ticker}..."):
-        try:
-            # Fetch stock data
-            stock_data = fetch_stock_data(ticker, start_date, end_date, is_sri_lankan)
-        except Exception as e:
-            st.error(f"Error with {ticker}: {str(e)}")
-            if is_sri_lankan:
-                st.warning(
-                    "Automated data fetching failed for Sri Lankan stock. Please upload historical data manually in CSV format. "
-                    "The CSV should have columns: Date, Open, High, Low, Close, Volume. "
-                    "You can download historical data for your ticker from the CSE website: "
-                    f"https://www.cse.lk/pages/company-profile/company-profile.component.html?symbol={ticker}.N0000"
-                )
-            else:
-                st.warning(
-                    "Automated data fetching failed. Please check the ticker or date range, or upload historical data manually in CSV format. "
-                    "The CSV should have columns: Date, Open, High, Low, Close, Volume."
-                )
-
-# Load data from uploaded file if provided
+# Option to upload a CSV file for Sri Lankan stocks
+uploaded_file = st.sidebar.file_uploader("Upload Historical Data (CSV) for Sri Lankan Stocks", type="csv", key="csv_uploader")
 if uploaded_file is not None:
-    with st.spinner("Loading uploaded file..."):
-        try:
-            stock_data = pd.read_csv(uploaded_file, parse_dates=["Date"], index_col="Date")
-            required_columns = ["Open", "High", "Low", "Close", "Volume"]
-            if not all(col in stock_data.columns for col in required_columns):
-                st.error("Uploaded CSV must contain columns: Date, Open, High, Low, Close, Volume")
-                stock_data = None
-            else:
-                stock_data = stock_data.loc[start_date:end_date]
-                if stock_data.empty:
-                    st.error("No data in the specified date range in the uploaded CSV")
-                    stock_data = None
-        except Exception as e:
-            st.error(f"Error loading uploaded file: {str(e)}")
-            stock_data = None
+    st.sidebar.info("Using uploaded CSV data. Map the columns below if needed.")
 
-# Run prediction if data is available
-if stock_data is not None and not stock_data.empty:
-    try:
-        # Display stock data
-        st.subheader(f"Stock Data for {ticker}")
-        st.write(stock_data.tail())
+# CSV column mapping
+if uploaded_file is not None:
+    df_temp = pd.read_csv(uploaded_file)
+    columns = df_temp.columns.tolist()
+    
+    st.sidebar.subheader("Map CSV Columns")
+    date_col = st.sidebar.selectbox("Select the Date column", columns, index=columns.index("Date") if "Date" in columns else 0, key="date_col_selectbox")
+    close_col = st.sidebar.selectbox("Select the Close column", columns, index=columns.index("Close") if "Close" in columns else 0, key="close_col_selectbox")
+    volume_col = st.sidebar.selectbox("Select the Volume column (optional)", ["None"] + columns, index=columns.index("Volume") if "Volume" in columns else 0, key="volume_col_selectbox")
 
-        # Progress bar for prediction steps
-        progress_bar = st.progress(0)
-        status_text = st.empty()
+# Main app logic
+if st.button("Run Prediction", key="run_prediction_button"):
+    with st.spinner("Fetching data and generating predictions..."):
+        # Determine which symbol to use
+        symbol = ticker
+        if is_sri_lankan:
+            symbol = f"{symbol}.N0000.CSE"  # Add suffix for EODHD
 
-        # Step 1: Fetch sentiment data
-        status_text.text("Fetching sentiment data...")
-        progress_bar.progress(20)
-        sentiment_data = fetch_sentiment_data(ticker, stock_data.index, is_sri_lankan)
+        # Calculate forecast days based on date range
+        forecast_days = (end_date - start_date).days
 
-        # Step 2: Train model and predict
-        status_text.text("Training model and generating predictions...")
-        progress_bar.progress(60)
-        model, X_test, y_test, scaler = train_model(stock_data, model_type)
-        predictions = predict_stock(model, stock_data, scaler, model_type)
-        
-        # Step 3: Generate buy/sell signals
-        status_text.text("Generating buy/sell signals...")
-        progress_bar.progress(90)
-        signals = generate_signals(stock_data, predictions, signal_type)
+        # Fetch data
+        df = fetch_stock_data(symbol, start_date, end_date, uploaded_file, date_col, close_col, volume_col)
+        if df is not None:
+            # Plot historical data
+            plot_historical_data(df, symbol)
 
-        # Step 4: Display results
-        status_text.text("Displaying results...")
-        progress_bar.progress(100)
+            # Generate predictions
+            forecast = predict_stock(df, forecast_days, model_choice)
+            if forecast is not None:
+                # Plot forecast
+                plot_forecast(df, forecast, symbol)
 
-        st.subheader("Predictions")
-        st.line_chart(predictions)
+                # Generate and display buy/sell signals
+                signals = generate_signals(forecast)
+                display_signals(signals)
 
-        st.subheader("Buy/Sell Signals")
-        st.write(signals.tail())
+                # Download prediction as CSV
+                forecast_csv = forecast.to_csv(index=False)
+                st.download_button(
+                    label="Download Prediction as CSV",
+                    data=forecast_csv,
+                    file_name="prediction.csv",
+                    mime="text/csv",
+                    key="download_prediction_csv"
+                )
 
-        # Download predictions
-        csv = predictions.to_csv()
-        st.download_button(
-            label="Download Predictions as CSV",
-            data=csv,
-            file_name=f"{ticker}_predictions.csv",
-            mime="text/csv"
-        )
-
-        # Clear progress bar
-        status_text.empty()
-        progress_bar.empty()
-
-    except Exception as e:
-        st.error(f"Error during prediction: {str(e)}")
-else:
-    if stock_data is None and not refresh_data and uploaded_file is None:
-        st.info("Please click 'Refresh Data' to fetch stock data or upload a CSV file.")
-
-# Run prediction button
-if st.button("Run Prediction"):
-    if stock_data is not None and not stock_data.empty:
-        try:
-            # Display stock data
-            st.subheader(f"Stock Data for {ticker}")
-            st.write(stock_data.tail())
-
-            # Progress bar for prediction steps
-            progress_bar = st.progress(0)
-            status_text = st.empty()
-
-            # Step 1: Fetch sentiment data
-            status_text.text("Fetching sentiment data...")
-            progress_bar.progress(20)
-            sentiment_data = fetch_sentiment_data(ticker, stock_data.index, is_sri_lankan)
-
-            # Step 2: Train model and predict
-            status_text.text("Training model and generating predictions...")
-            progress_bar.progress(60)
-            model, X_test, y_test, scaler = train_model(stock_data, model_type)
-            predictions = predict_stock(model, stock_data, scaler, model_type)
-            
-            # Step 3: Generate buy/sell signals
-            status_text.text("Generating buy/sell signals...")
-            progress_bar.progress(90)
-            signals = generate_signals(stock_data, predictions, signal_type)
-
-            # Step 4: Display results
-            status_text.text("Displaying results...")
-            progress_bar.progress(100)
-
-            st.subheader("Predictions")
-            st.line_chart(predictions)
-
-            st.subheader("Buy/Sell Signals")
-            st.write(signals.tail())
-
-            # Download predictions
-            csv = predictions.to_csv()
-            st.download_button(
-                label="Download Predictions as CSV",
-                data=csv,
-                file_name=f"{ticker}_predictions.csv",
-                mime="text/csv"
-            )
-
-            # Clear progress bar
-            status_text.empty()
-            progress_bar.empty()
-
-        except Exception as e:
-            st.error(f"Error during prediction: {str(e)}")
-    else:
-        st.error("No data available to run predictions. Please fetch data or upload a CSV file.")
+                # Download historical data as CSV
+                historical_csv = df.to_csv(index=False)
+                st.download_button(
+                    label="Download Historical Data as CSV",
+                    data=historical_csv,
+                    file_name="historical_data.csv",
+                    mime="text/csv",
+                    key="download_historical_csv"
+                )
