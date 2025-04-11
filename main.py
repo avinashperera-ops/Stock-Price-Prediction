@@ -11,13 +11,17 @@ except ImportError as e:
     st.error(f"Failed to import fetch_stock_data from src.data_fetch: {e}")
     st.stop()
 
-# Debug to confirm fetch_stock_data is defined
-if 'fetch_stock_data' not in globals():
-    st.error("fetch_stock_data is not defined after import. Please check src/data_fetch.py.")
+# Enhanced debug to confirm fetch_stock_data is defined and callable
+if not callable(fetch_stock_data):
+    st.error("fetch_stock_data is not a callable function. Please check src/data_fetch.py for errors.")
     st.stop()
 
-from src.model import train_model, predict_stock, generate_signals
-from src.visualize import plot_historical_data, plot_forecast, display_signals
+try:
+    from src.model import train_model, predict_stock, generate_signals
+    from src.visualize import plot_historical_data, plot_forecast, display_signals
+except ImportError as e:
+    st.error(f"Failed to import modules from src: {e}")
+    st.stop()
 
 # NLTK downloads (for sentiment analysis, if used)
 import nltk
