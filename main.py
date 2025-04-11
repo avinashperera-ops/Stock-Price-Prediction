@@ -4,7 +4,13 @@ import streamlit as st
 import pandas as pd
 from datetime import datetime, timedelta
 
-from src.data_fetch import fetch_stock_data, fetch_sentiment_data
+# Debug import to ensure src/data_fetch is accessible
+try:
+    from src.data_fetch import fetch_stock_data, fetch_sentiment_data
+except ImportError as e:
+    st.error(f"Failed to import fetch_stock_data from src.data_fetch: {e}")
+    st.stop()
+
 from src.model import train_model, predict_stock, generate_signals
 from src.visualize import plot_historical_data, plot_forecast, display_signals
 
