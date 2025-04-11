@@ -1,268 +1,72 @@
 # src/data_fetch.py
+
 import yfinance as yf
-import pandas as pd
 import requests
-import os
-import streamlit as st
-from bs4 import BeautifulSoup
-from nltk.sentiment.vader import SentimentIntensityAnalyzer
-from dotenv import load_dotenv
+import pandas as pd
 
-# Load environment variables
-load_dotenv()
+# EODHD API key
+EODHD_API_KEY = "your_eodhd_api_key_here"
 
-# Initialize NLTK VADER sentiment analyzer
-sia = SentimentIntensityAnalyzer()
-
-# API keys
-NEWSAPI_KEY = os.getenv("NEWSAPI_KEY")
-ALPHA_VANTAGE_API_KEY = os.getenv("ALPHA_VANTAGE_API_KEY")
-EOD_API_KEY = os.getenv("EOD_API_KEY")
-FMP_API_KEY = os.getenv("FMP_API_KEY")
-
-# Map tickers to company names for better news search
-TICKER_TO_COMPANY = {
-    "HNB": "Hatton National Bank",
-    "COMB": "Commercial Bank of Ceylon",
-    "SAMP": "Sampath Bank",
-    "AAPL": "Apple Inc.",
-    # Add more as needed
-}
-
-def fetch_stock_data(ticker, start_date, end_date, is_sri_lankan=False):
-    """
-    Fetch historical stock data from multiple sources.
-    
-    Args:
-        ticker (str): Stock ticker symbol (e.g., AAPL, HNB).
-        start_date (datetime.date): Start date for historical data.
-        end_date (datetime.date): End date for historical data.
-        is_sri_lankan (bool): Whether the stock is from the Colombo Stock Exchange (CSE).
-    
-    Returns:
-        pd.DataFrame: Historical stock data with columns: Open, High, Low, Close, Volume.
-    
-    Raises:
-        ValueError: If no data is found from any source.
-    """
+@st.cache_data
+def fetch_stock_data(symbol, start, end, uploaded_file=None, date_col=None, close_col=None, volume_col=None):
     try:
-        # Validate date range
-        if start_date >= end_date:
-            raise ValueError("Start date must be before end date.")
-        if end_date > pd.Timestamp.today().date():
-            raise ValueError("End date cannot be in the future.")
-
-        # If the ticker is Sri Lankan, append the .CO suffix for yfinance
-        original_ticker = ticker
-        yf_ticker = f"{ticker}.CO" if is_sri_lankan else ticker
-        
-        # Try yfinance first for all tickers
-        try:
-            stock = yf.Ticker(yf_ticker)
-            data = stock.history(start=start_date, end=end_date)
-            if data is None or (isinstance(data, pd.DataFrame) and data.empty):
-                raise ValueError(f"yfinance returned no data for {yf_ticker}. Response: {stock.info}")
-            return data
-        except Exception as yf_error:
-            st.warning(f"yfinance failed for {yf_ticker}: {str(yf_error)}")
-            data = None
-
-        # If yfinance fails, try Alpha Vantage for all tickers
-        if data is None or (isinstance(data, pd.DataFrame) and data.empty):
-            if ALPHA_VANTAGE_API_KEY:
-                try:
-                    av_ticker = f"{original_ticker}.CSE" if is_sri_lankan else original_ticker
-                    params = {
-                        "function": "TIME_SERIES_DAILY",
-                        "symbol": av_ticker,
-                        "outputsize": "full",
-                        "apikey": ALPHA_VANTAGE_API_KEY
-                    }
-                    response = requests.get("https://www.alphavantage.co/query", params=params)
-                    response.raise_for_status()
-                    av_data = response.json()
-
-                    if "Time Series (Daily)" not in av_data:
-                        error_msg = av_data.get('Note', 'No data returned')
-                        if 'Information' in av_data:
-                            error_msg = av_data.get('Information', error_msg)
-                        if "rate limit" in error_msg.lower():
-                            st.warning(f"Alpha Vantage rate limit exceeded: {error_msg}. Skipping Alpha Vantage.")
-                            data = None
-                        else:
-                            raise ValueError(f"No data found for {av_ticker} on Alpha Vantage: {error_msg}")
-                    else:
-                        time_series = av_data["Time Series (Daily)"]
-                        df = pd.DataFrame.from_dict(time_series, orient="index")
-                        df.index = pd.to_datetime(df.index)
-                        df = df[["1. open", "2. high", "3. low", "4. close", "5. volume"]]
-                        df.columns = ["Open", "High", "Low", "Close", "Volume"]
-                        df = df.astype(float)
-                        df = df.loc[start_date:end_date]
-                        if df.empty:
-                            raise ValueError(f"No data in the specified date range for {av_ticker} on Alpha Vantage")
-                        return df.sort_index()
-                except Exception as av_error:
-                    st.warning(f"Alpha Vantage failed for {av_ticker}: {str(av_error)}")
-                    data = None
-
-        # If Alpha Vantage fails, try Financial Modeling Prep for all tickers
-        if data is None or (isinstance(data, pd.DataFrame) and data.empty):
-            if FMP_API_KEY:
-                try:
-                    fmp_ticker = f"{original_ticker}.N0000" if is_sri_lankan else original_ticker
-                    url = f"https://financialmodelingprep.com/api/v3/historical-price-full/{fmp_ticker}?apikey={FMP_API_KEY}&from={start_date.strftime('%Y-%m-%d')}&to={end_date.strftime('%Y-%m-%d')}"
-                    response = requests.get(url)
-                    response.raise_for_status()
-                    fmp_data = response.json()
-
-                    if not fmp_data or "historical" not in fmp_data:
-                        raise ValueError(f"No data found for {fmp_ticker} on Financial Modeling Prep")
-
-                    historical_data = fmp_data["historical"]
-                    if not historical_data:
-                        raise ValueError(f"No historical data available for {fmp_ticker} on Financial Modeling Prep")
-
-                    df = pd.DataFrame(historical_data)
-                    df["Date"] = pd.to_datetime(df["date"])
-                    df.set_index("Date", inplace=True)
-                    df = df[["open", "high", "low", "close", "volume"]]
-                    df.columns = ["Open", "High", "Low", "Close", "Volume"]
-                    if df.empty:
-                        raise ValueError(f"No data in the specified date range for {fmp_ticker} on Financial Modeling Prep")
-                    return df.sort_index()
-                except Exception as fmp_error:
-                    st.warning(f"Financial Modeling Prep failed for {fmp_ticker}: {str(fmp_error)}")
-                    data = None
-
-        # If FMP fails, try EOD Historical Data for all tickers
-        if data is None or (isinstance(data, pd.DataFrame) and data.empty):
-            if EOD_API_KEY:
-                try:
-                    eod_ticker = f"{original_ticker}.N0000.CSE" if is_sri_lankan else original_ticker
-                    url = f"https://eodhistoricaldata.com/api/eod/{eod_ticker}?api_token={EOD_API_KEY}&fmt=json&from={start_date.strftime('%Y-%m-%d')}&to={end_date.strftime('%Y-%m-%d')}"
-                    response = requests.get(url)
-                    response.raise_for_status()
-                    eod_data = response.json()
-
-                    if not eod_data:
-                        raise ValueError(f"No data found for {eod_ticker} on EOD Historical Data")
-
-                    df = pd.DataFrame(eod_data)
-                    df["Date"] = pd.to_datetime(df["date"])
-                    df.set_index("Date", inplace=True)
-                    df = df[["open", "high", "low", "close", "volume"]]
-                    df.columns = ["Open", "High", "Low", "Close", "Volume"]
-                    if df.empty:
-                        raise ValueError(f"No data in the specified date range for {eod_ticker} on EOD Historical Data")
-                    return df.sort_index()
-                except Exception as eod_error:
-                    st.warning(f"EOD Historical Data failed for {eod_ticker}: {str(eod_error)}")
-                    data = None
-
-        # If all previous methods fail and the stock is Sri Lankan, scrape from CSE website
-        if (data is None or (isinstance(data, pd.DataFrame) and data.empty)) and is_sri_lankan:
-            try:
-                url = f"https://www.cse.lk/api/companyDetails?symbol={original_ticker}.N0000"
-                headers = {
-                    "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-                }
-                response = requests.get(url, headers=headers)
-                response.raise_for_status()
-                cse_data = response.json()
-
-                if not cse_data or "historicalData" not in cse_data:
-                    raise ValueError(f"No historical data found for {original_ticker} on CSE website")
-
-                historical_data = cse_data["historicalData"]
-                if not historical_data:
-                    raise ValueError(f"No historical data available for {original_ticker} on CSE website")
-
-                # Convert to DataFrame
-                df = pd.DataFrame(historical_data)
-                df["Date"] = pd.to_datetime(df["date"])
-                df.set_index("Date", inplace=True)
-                df = df[["open", "high", "low", "close", "volume"]]
-                df.columns = ["Open", "High", "Low", "Close", "Volume"]
-                df = df.astype(float)
-                df = df.loc[start_date:end_date]
-                if df.empty:
-                    raise ValueError(f"No data in the specified date range for {original_ticker} on CSE website")
-                return df.sort_index()
-            except Exception as scrape_error:
-                st.warning(f"CSE scraping failed for {original_ticker}: {str(scrape_error)}")
-                data = None
-
-        # If all methods fail, raise an error
-        if data is None or (isinstance(data, pd.DataFrame) and data.empty):
-            error_msg = f"No data found for {ticker} in the specified date range ({start_date} to {end_date})."
-            if is_sri_lankan:
-                error_msg += " Please ensure the ticker is correct (e.g., HNB for Hatton National Bank) or upload a CSV file with historical data."
+        # If a CSV file is uploaded, use it
+        if uploaded_file is not None:
+            df = pd.read_csv(uploaded_file)
+            required_columns = [date_col, close_col]
+            if not all(col in df.columns for col in required_columns):
+                st.error(f"The CSV must contain the selected columns: {required_columns}")
+                return None
+            
+            # Rename columns to standard names
+            df = df.rename(columns={date_col: "Date", close_col: "Close"})
+            if volume_col != "None":
+                df = df.rename(columns={volume_col: "Volume"})
             else:
-                error_msg += " Please check the ticker or date range, or upload a CSV file with historical data."
-            raise ValueError(error_msg)
+                df["Volume"] = 0  # Add a dummy Volume column if not provided
+            
+            df["Date"] = pd.to_datetime(df["Date"])
+            df["Close"] = df["Close"].astype(float)
+            df["Volume"] = df["Volume"].astype(int)
+            df = df[["Date", "Close", "Volume"]]
+            df = df[(df["Date"] >= pd.to_datetime(start)) & (df["Date"] <= pd.to_datetime(end))]
+            return df
 
-        return data
+        # Use EODHD for Sri Lankan stocks (ending with .N0000.CSE)
+        if symbol.endswith(".N0000.CSE"):
+            url = f"https://eodhistoricaldata.com/api/eod/{symbol}?api_token={EODHD_API_KEY}&fmt=json"
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
+            
+            if not data:
+                st.error(f"No data found for {symbol} on EODHD. Please check the symbol or upload a CSV file.")
+                return None
+            
+            # Convert EODHD data to DataFrame
+            df = pd.DataFrame(data)
+            df["Date"] = pd.to_datetime(df["date"])
+            df = df.rename(columns={"close": "Close", "volume": "Volume"})
+            df = df[["Date", "Close", "Volume"]]
+            df = df[(df["Date"] >= pd.to_datetime(start)) & (df["Date"] <= pd.to_datetime(end))]
+            return df
 
-    except Exception as e:
-        raise Exception(f"Error fetching {ticker}: {str(e)}")
-
-def fetch_sentiment_data(ticker, dates, is_sri_lankan=False):
-    """
-    Fetch sentiment data based on news articles using NLTK VADER.
+        # Use Yahoo Finance for global stocks
+        stock = yf.Ticker(symbol)
+        df = stock.history(start=start, end=end)
+        if df.empty:
+            st.error(f"No data found for {symbol} on Yahoo Finance. Please check the symbol (e.g., AAPL for Apple) or upload a CSV file.")
+            return None
+        df.reset_index(inplace=True)
+        # Ensure the Date column is timezone-naive
+        if df["Date"].dt.tz is not None:
+            df["Date"] = df["Date"].dt.tz_localize(None)
+        return df[["Date", "Close", "Volume"]]
     
-    Args:
-        ticker (str): Stock ticker symbol.
-        dates (pd.Index): Dates for which to fetch sentiment data.
-        is_sri_lankan (bool): Whether the stock is from the Colombo Stock Exchange (CSE).
-    
-    Returns:
-        pd.DataFrame: Sentiment scores for the given dates.
-    """
-    try:
-        if not NEWSAPI_KEY:
-            st.warning("NewsAPI key not found. Proceeding with neutral sentiment.")
-            return pd.DataFrame({"Sentiment": [0.0] * len(dates)}, index=dates)
-        
-        # Use the company name for better news search
-        query = TICKER_TO_COMPANY.get(ticker.replace(".CO", ""), ticker)
-        if is_sri_lankan:
-            query = f"{query} Sri Lanka"
-        
-        # Increment request count using session state
-        if "newsapi_request_count" not in st.session_state:
-            st.session_state.newsapi_request_count = 0
-        st.session_state.newsapi_request_count += 1
-
-        # Fetch news articles
-        url = f"https://newsapi.org/v2/everything?q={query}&apiKey={NEWSAPI_KEY}"
-        response = requests.get(url)
-        response.raise_for_status()
-        news_data = response.json()
-        articles = news_data.get("articles", [])
-        if not articles:
-            st.warning(f"No news articles found for {query}. Proceeding with neutral sentiment.")
-            return pd.DataFrame({"Sentiment": [0.0] * len(dates)}, index=dates)
-
-        # Analyze sentiment of each article
-        sentiment_scores = []
-        for article in articles:
-            title = article.get("title", "") or ""
-            description = article.get("description", "") or ""
-            text = title + " " + description
-            if text.strip():
-                scores = sia.polarity_scores(text)
-                sentiment_scores.append(scores["compound"])  # Use compound score
-            else:
-                sentiment_scores.append(0.0)  # Neutral if no text
-
-        # Average sentiment score
-        avg_sentiment = sum(sentiment_scores) / len(sentiment_scores) if sentiment_scores else 0.0
-
-        # Create a DataFrame with the same sentiment score for all dates
-        sentiment_df = pd.DataFrame({"Sentiment": [avg_sentiment] * len(dates)}, index=dates)
-        return sentiment_df
     except Exception as e:
-        st.warning(f"Sentiment analysis failed for {ticker}: {str(e)}. Proceeding with neutral sentiment.")
-        # Return a DataFrame with neutral sentiment (0.0) for all dates
-        return pd.DataFrame({"Sentiment": [0.0] * len(dates)}, index=dates)
+        st.error(f"Error fetching data: {e}. Please try another symbol, upload a CSV file, or try again later.")
+        return None
+
+def fetch_sentiment_data():
+    # Placeholder for sentiment data fetching (if needed)
+    pass
