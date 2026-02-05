@@ -101,6 +101,10 @@ model_choice = st.sidebar.selectbox("Choose Model", ["Prophet", "LSTM"], index=0
 st.sidebar.subheader("Signal Type")
 signal_type = st.sidebar.selectbox("Signal Type", ["Moving Average"], index=0, key="signal_selectbox")
 
+date_col = "Date"
+close_col = "Close"
+volume_col = "Volume"
+
 # Option to upload a CSV file for Sri Lankan stocks
 uploaded_file = st.sidebar.file_uploader("Upload Historical Data (CSV) for Sri Lankan Stocks", type="csv", key="csv_uploader")
 if uploaded_file is not None:
