@@ -1,5 +1,5 @@
 pandas==2.2.2
-numpy==1.26.4
+numpy<2.0.0
 yfinance>=0.2.50
 tensorflow==2.16.1
 scikit-learn==1.5.0
@@ -12,4 +12,3 @@ plotly==5.22.0
 beautifulsoup4==4.12.2
 prophet==1.1.5
 holidays==0.25
-pystan==3.7.0
