@@ -32,7 +32,7 @@ A comprehensive stock prediction tool using historical data and NewsAPI sentimen
 ## Installation
 1. Clone the repo:
    ```bash
-   git clone https://github.com/your-username/Stock-Price-Prediction.git
+   git clone https://github.com/avinashperera-ops/Stock-Price-Prediction.git
 
 ## Try It (Live Demo)
 You can try the demo version of this from the below link:
