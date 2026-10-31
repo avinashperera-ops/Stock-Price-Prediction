@@ -2,167 +2,120 @@
 
 import streamlit as st
 import pandas as pd
-from datetime import datetime, timedelta
 
-# Debug import to ensure data_fetch is accessible
-try:
-    from src.data_fetch import fetch_stock_data, fetch_sentiment_data
-except ImportError as e:
-    st.error(f"Failed to import fetch_stock_data from src.data_fetch: {e}")
-    st.stop()
+st.set_page_config(
+    page_title="TradUp - Quantitative Dashboard",
+    page_icon="⚡",
+    layout="wide",
+    initial_sidebar_state="expanded"
+)
 
-# Enhanced debug to confirm fetch_stock_data is defined and callable
-if not callable(fetch_stock_data):
-    st.error("fetch_stock_data is not a callable function. Please check src/data_fetch.py for errors.")
-    st.stop()
-
-try:
-    from src.model import train_model, predict_stock, generate_signals
-    from src.visualize import plot_historical_data, plot_forecast, display_signals
-except ImportError as e:
-    st.error(f"Failed to import modules from src: {e}")
-    st.stop()
-
-# NLTK downloads (for sentiment analysis, if used)
-import nltk
-nltk.download('vader_lexicon')
-
-# Custom CSS for a dark theme
+# Custom Dark Glassmorphism Styling Matching the UI Reference
 st.markdown("""
     <style>
-    /* Main app background */
-    [data-testid="stAppViewContainer"] {
-        background-color: #1e1e1e !important;
-        color: white;
-        padding: 20px;
-        border-radius: 10px;
-    }
-    /* Style the button */
+    .stApp { background-color: #08060F; color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+    [data-testid="stSidebar"] { background-color: #0E0A1F; border-right: 1px solid rgba(255,255,255,0.05); }
+    .card { background: #130F26; border: 1px solid rgba(255,255,255,0.08); padding: 20px; border-radius: 16px; margin-bottom: 16px; }
+    .metric-value { font-size: 28px; font-weight: 700; color: #FFFFFF; margin-top: 5px; }
+    .metric-title { font-size: 13px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; }
     .stButton>button {
-        background-color: #4CAF50;
-        color: white;
-        border-radius: 5px;
-        padding: 10px 20px;
+        background: linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%);
+        color: white; font-weight: 600; border-radius: 12px; padding: 0.6rem 1rem; border: none; width: 100%;
     }
-    /* Style selectbox, slider, and text input */
-    .stSelectbox, .stSlider, .stTextInput, .stDateInput {
-        background-color: #2e2e2e;
-        color: white;
-        border-radius: 5px;
-        padding: 10px;
-    }
-    /* Style the title */
-    h1 {
-        color: white;
-        text-align: center;
-    }
-    /* Style the sidebar */
-    [data-testid="stSidebar"] {
-        background-color: #2e2e2e !important;
-        color: white;
-        border-radius: 10px;
-    }
-    [data-testid="stSidebar"] * {
-        color: white !important;
-    }
-    /* Style alerts */
-    .stAlert {
-        border-radius: 5px;
-    }
-    /* Style dataframe */
-    .stDataFrame {
-        background-color: #2e2e2e;
-        color: white;
-    }
+    .stButton>button:hover { background: linear-gradient(135deg, #6D28D9 0%, #4338CA 100%); }
     </style>
 """, unsafe_allow_html=True)
 
-# App title
-st.title("Stock Price Prediction with Buy/Sell Signals")
+try:
+    from src.data_fetch import fetch_stock_data
+    from src.model import predict_stock, generate_signals
+    from src.visualize import plot_dashboard_chart
+except ImportError as e:
+    st.error(f"Module Import Error: {e}")
+    st.stop()
 
-# Sidebar for user input
-st.sidebar.header("Input Parameters")
+# Top Navigation Bar Simulation
+col_top1, col_top2 = st.columns([3, 1])
+with col_top1:
+    st.markdown("## Dashboard")
+with col_top2:
+    st.markdown("<div style='text-align: right; color: #94A3B8; padding-top: 10px;'>Samuel Jr | @samjrw</div>", unsafe_allow_html=True)
 
-# Ticker input
-st.sidebar.subheader("Ticker")
-ticker = st.sidebar.text_input("Global Stock (e.g., AAPL, HNB)", "AAPL", key="global_stock_input")
-is_sri_lankan = st.sidebar.checkbox("Sri Lankan Stock (e.g., HNB, COMB)", False, key="sri_lankan_checkbox")
+st.markdown("<hr style='border: 0.5px solid rgba(255,255,255,0.05); margin-top: 0px;'>", unsafe_allow_html=True)
 
-# Date range
-st.sidebar.subheader("Date Range")
-start_date = st.sidebar.date_input("Start", datetime(2024, 4, 11), key="start_date_input")
-end_date = st.sidebar.date_input("End", datetime(2025, 4, 11), key="end_date_input")
+# Sidebar Menu Controls
+st.sidebar.markdown("### TradUp")
+st.sidebar.markdown("MENU")
+nav_selection = st.sidebar.radio("Navigation", ["Dashboard", "Assets", "Market", "Portfolio", "Stacking Provider"], label_visibility="collapsed")
 
-# Model selection
-st.sidebar.subheader("Model")
-model_choice = st.sidebar.selectbox("Choose Model", ["Prophet", "LSTM"], index=0, key="model_selectbox")
+st.sidebar.markdown("---")
+st.sidebar.markdown("### Asset Query")
+ticker_input = st.sidebar.text_input("Ticker Symbol", value="AAPL").strip().upper()
+is_sri_lankan = st.sidebar.checkbox("Sri Lankan CSE Stock", value=False)
+forecast_horizon = st.sidebar.slider("Forecast Horizon (Days)", 7, 90, 30)
+run_analysis = st.sidebar.button("Run Live Analysis")
 
-# Signal type
-st.sidebar.subheader("Signal Type")
-signal_type = st.sidebar.selectbox("Signal Type", ["Moving Average"], index=0, key="signal_selectbox")
-
-date_col = "Date"
-close_col = "Close"
-volume_col = "Volume"
-
-# Option to upload a CSV file for Sri Lankan stocks
-uploaded_file = st.sidebar.file_uploader("Upload Historical Data (CSV) for Sri Lankan Stocks", type="csv", key="csv_uploader")
-if uploaded_file is not None:
-    st.sidebar.info("Using uploaded CSV data. Map the columns below if needed.")
-
-# CSV column mapping
-if uploaded_file is not None:
-    df_temp = pd.read_csv(uploaded_file)
-    columns = df_temp.columns.tolist()
+# Main Content Architecture
+if run_analysis or ticker_input:
+    symbol = f"{ticker_input}.N0000.CSE" if is_sri_lankan and not ticker_input.endswith(".CSE") else ticker_input
     
-    st.sidebar.subheader("Map CSV Columns")
-    date_col = st.sidebar.selectbox("Select the Date column", columns, index=columns.index("Date") if "Date" in columns else 0, key="date_col_selectbox")
-    close_col = st.sidebar.selectbox("Select the Close column", columns, index=columns.index("Close") if "Close" in columns else 0, key="close_col_selectbox")
-    volume_col = st.sidebar.selectbox("Select the Volume column (optional)", ["None"] + columns, index=columns.index("Volume") if "Volume" in columns else 0, key="volume_col_selectbox")
+    with st.spinner(f"Querying live feeds and executing models for {symbol}..."):
+        df = fetch_stock_data(symbol, period_years=1)
+        
+        if df is not None and not df.empty:
+            forecast = predict_stock(df, forecast_horizon)
+            signals = generate_signals(forecast)
+            
+            latest_price = df["Close"].iloc[-1]
+            prev_price = df["Close"].iloc[-2] if len(df) > 1 else latest_price
+            change_pct = ((latest_price - prev_price) / prev_price) * 100
+            
+            # Top 3 Stat Cards Row matching the UI reference
+            m1, m2, m3 = st.columns(3)
+            with m1:
+                st.markdown(f"""
+                    <div class="card">
+                        <div class="metric-title">Total Value</div>
+                        <div class="metric-value">${latest_price:,.2f}</div>
+                        <div style="color: {'#10B981' if change_pct >= 0 else '#EF4444'}; font-size: 12px; margin-top: 4px;">{change_pct:+.2f}% past session</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            with m2:
+                st.markdown(f"""
+                    <div class="card">
+                        <div class="metric-title">Market Volume</div>
+                        <div class="metric-value">{int(df['Volume'].iloc[-1]):,}</div>
+                        <div style="color: #94A3B8; font-size: 12px; margin-top: 4px;">Latest Traded Volume</div>
+                    </div>
+                """, unsafe_allow_html=True)
+            with m3:
+                st.markdown(f"""
+                    <div class="card">
+                        <div class="metric-title">Model Horizon</div>
+                        <div class="metric-value">{forecast_horizon} Days</div>
+                        <div style="color: #38BDF8; font-size: 12px; margin-top: 4px;">Prophet Time-Series Engine</div>
+                    </div>
+                """, unsafe_allow_html=True)
 
-# Main app logic
-if st.button("Run Prediction", key="run_prediction_button"):
-    with st.spinner("Fetching data and generating predictions..."):
-        # Determine which symbol to use
-        symbol = ticker
-        if is_sri_lankan:
-            symbol = f"{symbol}.N0000.CSE"  # Add suffix for EODHD
+            # Central Chart Layout Matching the Interface
+            st.markdown('<div class="card">', unsafe_allow_html=True)
+            plot_dashboard_chart(df, forecast, symbol)
+            st.markdown('</div>', unsafe_allow_html=True)
 
-        # Calculate forecast days based on date range
-        forecast_days = (end_date - start_date).days
+            # Bottom Analytics Table
+            st.markdown("### Automated Technical Signals")
+            display_signals = signals.tail(5).copy()
+            display_signals["Signal"] = display_signals["Signal"].map({1: "BUY", -1: "SELL", 0: "HOLD"})
+            st.dataframe(display_signals.rename(columns={"Date": "Timestamp", "Predicted_Price": "Projected Price"}), use_container_width=True)
 
-        # Fetch data
-        df = fetch_stock_data(symbol, start_date, end_date, uploaded_file, date_col, close_col, volume_col)
-        if df is not None:
-            # Plot historical data
-            plot_historical_data(df, symbol)
-
-            # Generate predictions
-            forecast = predict_stock(df, forecast_days, model_choice)
-            if forecast is not None:
-                # Plot forecast
-                plot_forecast(df, forecast, symbol)
-
-                # Generate and display buy/sell signals
-                signals = generate_signals(forecast)
-                display_signals(signals)
-
-                # Download prediction as CSV
-                forecast_csv = forecast.to_csv(index=False)
-                st.download_button(
-                    label="Download Prediction as CSV",
-                    data=forecast_csv,
-                    file_name="prediction.csv",
-                    mime="text/csv",
-                    key="download_prediction_csv"
-                )
-
-                # Download historical data as CSV
-                historical_csv = df.to_csv(index=False)
-                st.download_button(
-                    label="Download Historical Data as CSV",
-                    data=historical_csv,
-                    file_name="historical_data.csv",
-                    mime="text/csv",
-                    key="download_historical_csv"
-                )
+            # File Downloads
+            st.markdown("### Data Export Options")
+            col_d1, col_d2 = st.columns(2)
+            with col_d1:
+                st.download_button("Download Forecast CSV", forecast.to_csv(index=False), "forecast.csv", "text/csv")
+            with col_d2:
+                st.download_button("Download Historical CSV", df.to_csv(index=False), "historical.csv", "text/csv")
+        else:
+            st.warning("Invalid ticker symbol or data source unavailable. Please verify your input.")
+else:
+    st.info("Configure your target ticker symbol in the sidebar and click **Run Live Analysis** to render the dashboard.")
