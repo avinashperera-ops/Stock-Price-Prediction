@@ -1,5 +1,5 @@
+numpy>=2.0.0
 pandas>=2.2.0
-numpy>=1.26.0,<2.0.0
 yfinance>=0.2.50
 prophet>=1.1.5
 holidays>=0.25

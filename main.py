@@ -16,8 +16,8 @@ st.markdown("""
     .stApp { background-color: #08060F; color: #F8FAFC; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
     [data-testid="stSidebar"] { background-color: #0E0A1F; border-right: 1px solid rgba(255,255,255,0.05); }
     .card { background: #130F26; border: 1px solid rgba(255,255,255,0.08); padding: 20px; border-radius: 16px; margin-bottom: 16px; }
-    .metric-value { font-size: 28px; font-weight: 700; color: #FFFFFF; margin-top: 5px; }
-    .metric-title { font-size: 13px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; }
+    .metric-value { font-size: 26px; font-weight: 700; color: #FFFFFF; margin-top: 5px; }
+    .metric-title { font-size: 12px; color: #94A3B8; text-transform: uppercase; letter-spacing: 0.5px; }
     .stButton>button {
         background: linear-gradient(135deg, #7C3AED 0%, #4F46E5 100%);
         color: white; font-weight: 600; border-radius: 12px; padding: 0.6rem 1rem; border: none; width: 100%;
@@ -27,19 +27,19 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 try:
-    from src.data_fetch import fetch_stock_data
+    from src.data_fetch import fetch_stock_data, fetch_live_watchlist
     from src.model import predict_stock, generate_signals
     from src.visualize import plot_dashboard_chart
 except ImportError as e:
     st.error(f"Module Import Error: {e}")
     st.stop()
 
-# Top Navigation Bar Simulation
+# Top Header Bar
 col_top1, col_top2 = st.columns([3, 1])
 with col_top1:
     st.markdown("## Dashboard")
 with col_top2:
-    st.markdown("<div style='text-align: right; color: #94A3B8; padding-top: 10px;'>Samuel Jr | @samjrw</div>", unsafe_allow_html=True)
+    st.markdown("<div style='text-align: right; color: #94A3B8; padding-top: 10px;'>User | Active Session</div>", unsafe_allow_html=True)
 
 st.markdown("<hr style='border: 0.5px solid rgba(255,255,255,0.05); margin-top: 0px;'>", unsafe_allow_html=True)
 
@@ -61,6 +61,7 @@ if run_analysis or ticker_input:
     
     with st.spinner(f"Querying live feeds and executing models for {symbol}..."):
         df = fetch_stock_data(symbol, period_years=1)
+        live_watchlist = fetch_live_watchlist()
         
         if df is not None and not df.empty:
             forecast = predict_stock(df, forecast_horizon)
@@ -70,45 +71,78 @@ if run_analysis or ticker_input:
             prev_price = df["Close"].iloc[-2] if len(df) > 1 else latest_price
             change_pct = ((latest_price - prev_price) / prev_price) * 100
             
-            # Top 3 Stat Cards Row matching the UI reference
-            m1, m2, m3 = st.columns(3)
-            with m1:
-                st.markdown(f"""
-                    <div class="card">
-                        <div class="metric-title">Total Value</div>
-                        <div class="metric-value">${latest_price:,.2f}</div>
-                        <div style="color: {'#10B981' if change_pct >= 0 else '#EF4444'}; font-size: 12px; margin-top: 4px;">{change_pct:+.2f}% past session</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            with m2:
-                st.markdown(f"""
-                    <div class="card">
-                        <div class="metric-title">Market Volume</div>
-                        <div class="metric-value">{int(df['Volume'].iloc[-1]):,}</div>
-                        <div style="color: #94A3B8; font-size: 12px; margin-top: 4px;">Latest Traded Volume</div>
-                    </div>
-                """, unsafe_allow_html=True)
-            with m3:
-                st.markdown(f"""
-                    <div class="card">
-                        <div class="metric-title">Model Horizon</div>
-                        <div class="metric-value">{forecast_horizon} Days</div>
-                        <div style="color: #38BDF8; font-size: 12px; margin-top: 4px;">Prophet Time-Series Engine</div>
+            # Layout Grid: Main Workspace (Left) & Live Portfolio Panel (Right)
+            col_main, col_side = st.columns([2.2, 1])
+
+            with col_main:
+                # Top 3 Stat Cards Row
+                m1, m2, m3 = st.columns(3)
+                with m1:
+                    st.markdown(f"""
+                        <div class="card">
+                            <div class="metric-title">Selected Asset Value</div>
+                            <div class="metric-value">${latest_price:,.2f}</div>
+                            <div style="color: {'#10B981' if change_pct >= 0 else '#EF4444'}; font-size: 12px; margin-top: 4px;">{change_pct:+.2f}% recent</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with m2:
+                    st.markdown(f"""
+                        <div class="card">
+                            <div class="metric-title">Market Volume</div>
+                            <div class="metric-value">{int(df['Volume'].iloc[-1]):,}</div>
+                            <div style="color: #94A3B8; font-size: 12px; margin-top: 4px;">Daily Traded Volume</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+                with m3:
+                    st.markdown(f"""
+                        <div class="card">
+                            <div class="metric-title">AI Horizon</div>
+                            <div class="metric-value">{forecast_horizon} Days</div>
+                            <div style="color: #38BDF8; font-size: 12px; margin-top: 4px;">Prophet Engine</div>
+                        </div>
+                    """, unsafe_allow_html=True)
+
+                # Central Chart Card
+                st.markdown('<div class="card">', unsafe_allow_html=True)
+                plot_dashboard_chart(df, forecast, symbol)
+                st.markdown('</div>', unsafe_allow_html=True)
+
+                # Automated Technical Signals Table
+                st.markdown("### Automated Technical Signals")
+                display_signals = signals.tail(5).copy()
+                display_signals["Signal"] = display_signals["Signal"].map({1: "BUY", -1: "SELL", 0: "HOLD"})
+                st.dataframe(display_signals.rename(columns={"Date": "Timestamp", "Predicted_Price": "Projected Price"}), use_container_width=True)
+
+            with col_side:
+                # Right Sidebar Card: Live Watchlist Positions (100% Real Live Data)
+                st.markdown("""
+                    <div class="card" style="background: linear-gradient(135deg, #130F26 0%, #1E153B 100%); border: 1px solid rgba(139, 92, 246, 0.3);">
+                        <div class="metric-title" style="color: #A78BFA;">Live Market Watchlist</div>
+                        <div style="font-size: 20px; font-weight: 700; margin-top: 5px;">Active Positions</div>
                     </div>
                 """, unsafe_allow_html=True)
 
-            # Central Chart Layout Matching the Interface
-            st.markdown('<div class="card">', unsafe_allow_html=True)
-            plot_dashboard_chart(df, forecast, symbol)
-            st.markdown('</div>', unsafe_allow_html=True)
+                st.markdown("### Portfolio Positions")
+                if not live_watchlist.empty:
+                    for _, row in live_watchlist.iterrows():
+                        color = "#10B981" if row['Change'] >= 0 else "#EF4444"
+                        arrow = "↑" if row['Change'] >= 0 else "↓"
+                        st.markdown(f"""
+                            <div class="card" style="padding: 12px; margin-bottom: 8px;">
+                                <div style="display: flex; justify-content: space-between; font-weight: 600;">
+                                    <span>{row['Symbol']}</span>
+                                    <span>${row['Price']:,.2f}</span>
+                                </div>
+                                <div style="display: flex; justify-content: space-between; font-size: 12px; color: {color}; margin-top: 4px;">
+                                    <span>Live Feed</span>
+                                    <span>{arrow} {row['Change']:+.2f}%</span>
+                                </div>
+                            </div>
+                        """, unsafe_allow_html=True)
+                else:
+                    st.info("Watchlist data currently unavailable.")
 
-            # Bottom Analytics Table
-            st.markdown("### Automated Technical Signals")
-            display_signals = signals.tail(5).copy()
-            display_signals["Signal"] = display_signals["Signal"].map({1: "BUY", -1: "SELL", 0: "HOLD"})
-            st.dataframe(display_signals.rename(columns={"Date": "Timestamp", "Predicted_Price": "Projected Price"}), use_container_width=True)
-
-            # File Downloads
+            # Export Suite
             st.markdown("### Data Export Options")
             col_d1, col_d2 = st.columns(2)
             with col_d1:

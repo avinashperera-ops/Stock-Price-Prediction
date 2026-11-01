@@ -6,14 +6,14 @@ import plotly.graph_objs as go
 def plot_dashboard_chart(df, forecast, symbol):
     fig = go.Figure()
 
-    # Historical line (Neon Purple/Blue Theme)
+    # Historical line (Neon Purple/Blue Theme matching the UI reference)
     fig.add_trace(go.Scatter(
         x=df["Date"], y=df["Close"], 
         mode="lines", name="Historical",
         line=dict(color="#8B5CF6", width=2.5)
     ))
 
-    # Forecast line
+    # AI Forecast line
     fig.add_trace(go.Scatter(
         x=forecast["ds"], y=forecast["yhat"], 
         mode="lines", name="AI Forecast",
